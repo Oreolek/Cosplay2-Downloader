@@ -3,7 +3,6 @@
 # Author: Himura Kazuto <himura@tulafest.ru>
 
 from yaml import load
-
 from lib.downloader import Downloader
 
 if __name__ == '__main__':
@@ -11,10 +10,8 @@ if __name__ == '__main__':
     db_path = config['db_path']
     folder_path = config['folder_path']
 
-
     print_noms = ','.join([f'"{nom}"' for nom in config['print_noms']])
     main_foto_join, main_foto_if = '', ''
-
     if config['use_main_foto']:
         main_foto_join = f"""
             LEFT JOIN (SELECT request_section_id as m_rsid, 
@@ -48,10 +45,8 @@ if __name__ == '__main__':
         new_file_name = file_name.replace(' ', '-')
         return skip_by_field, new_dir_name, new_file_name
 
-
     d = Downloader(preprocess)
 
     if d.get_lists(db_path, query):
-
         print('\nDownloading files...')
         d.download_files(folder_path, d.CHECK_UPDATES_ONLY)
