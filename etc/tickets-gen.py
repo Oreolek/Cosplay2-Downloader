@@ -7,27 +7,30 @@ types = {
     '01': {
         'descr': 'Билет\n"Тануки"',
         'image': 'tanuki.jpg',
-        'start': 321,
-        'total': 4
+        'start': 397,
+        'total': 108
     },
     '02': {
         'descr': 'Билет\n"Кицунэ"',
         'image': 'kitsune.jpg',
-        'start': 310,
-        'total': 0
+        'start': 346,
+        'total': 72
     },
     '03': {
         'descr': 'VIP Билет\n"Ооками"',
         'image': 'ookami.jpg',
-        'start': 305,
-        'total': 20
+        'start': 337,
+        'total': 36
     }
 }
 
-image_base_path = r'D:\Clouds\YandexDisk\Fests\Yuki no Odori 8\design\Ticket\krol'
-target_csv_path = f'D:\Clouds\YandexDisk\Fests\Yuki no Odori 8\design\Ticket\\tickets-%s.csv'
+image_base_path = r'D:\Clouds\YandexDisk\Fests\Yuki no Odori 8\design\Tickets\krol'
+target_csv_path = f'D:\Clouds\YandexDisk\Fests\Yuki no Odori 8\design\Tickets\Print5\\tickets-%s.csv'
 pool = ['A', 'B', 'D', 'E', 'F', 'H', 'K', 'L', 'M', 'P', 'R', 'S', 'T', 'U', 'V', 'X', 'Y', 'Z'] + \
        [chr(ord('1') + i) for i in range(9)]
+
+if not os.path.exists(os.path.split(target_csv_path)[0]):
+    os.makedirs(os.path.split(target_csv_path)[0])
 
 
 def make_codes(how_many):

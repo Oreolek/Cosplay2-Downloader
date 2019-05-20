@@ -2,7 +2,10 @@
 # -*- coding: utf-8 -*-
 # Author: Himura Kazuto <himura@tulafest.ru>
 
+import os
 import sqlite3
+import sys
+
 from yaml import load  # pip install pyyaml
 
 from lib.authenticator import Authenticator
@@ -10,7 +13,7 @@ from lib.fetcher import Fetcher
 from lib.make_db import MakeDB
 
 if __name__ == '__main__':
-    config = load(open('config.yml', 'r', encoding='utf-8').read())
+    config = load(open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.yml'), 'r', encoding='utf-8').read())
 
     event_name = config['event_name']
     c2_login = config['admin_cs2_name']
@@ -18,16 +21,24 @@ if __name__ == '__main__':
     db_path = config['db_path']
     sql = config['sql_after_get'].strip() if 'sql_after_get' in config else None
 
+    all_data = len(sys.argv) > 1 and sys.argv[1] == '-a'
+
     a = Authenticator(event_name, c2_login, c2_password)
     if not a.sign_in():
         exit()
 
     print()
     f = Fetcher(a.event_name, a.cookie)
-    if not f.fetch():
+    if not f.fetch_data():
         exit()
 
-    print()
+    if all_data:
+        if not f.fetch_etickets():
+            exit()
+        if not f.fetch_details():
+            exit()
+
+    print('\nCreating ' + db_path + '...')
     MakeDB(db_path, f.data)
 
     if sql:

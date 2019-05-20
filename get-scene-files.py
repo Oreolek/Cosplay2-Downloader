@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 # Author: Himura Kazuto <himura@tulafest.ru>
 
+import os
 from yaml import load
 from lib.downloader import Downloader
 
 if __name__ == '__main__':
-    config = load(open('config.yml', 'r', encoding='utf-8').read())
+    config = load(open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.yml'), 'r', encoding='utf-8').read())
     db_path = config['db_path']
     folder_path = config['folder_path']
 
@@ -37,4 +38,4 @@ if __name__ == '__main__':
 
     if d.get_lists(db_path, query):
         print('\nDownloading files...')
-        d.download_files(folder_path)
+        d.download_files(folder_path, d.DOWNLOAD_UPDATED_REQUESTS)
