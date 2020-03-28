@@ -1,4 +1,5 @@
-SELECT voting_number, card_code, title, voting_title, announcement_title
+SELECT '[' || card_code || ' ' || voting_number || '] ' || list.title as num,
+		voting_title, announcement_title
 
 FROM list, requests
 

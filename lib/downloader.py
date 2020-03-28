@@ -10,6 +10,8 @@ import unicodedata
 from urllib import request
 from urllib import parse
 
+from lib.cloud_downloader import CloudDownloader
+
 
 class Downloader:
     SKIP_DOWNLOAD = 0
@@ -91,8 +93,7 @@ class Downloader:
         for row in self.data:
             prev_name = name
             request_id, update_time, nom, num, title, file_type, file = row
-            name = self.to_filename('%0.3d. %s' % (int(num), title if title else 'No title'))
-            name = name.replace('  ', ' ')
+            name = self.to_filename(title if title else 'No title').replace('  ', ' ')
             nom, file_type = self.to_filename(nom), self.to_filename(file_type)
             download_skipped_by_preprocessor, dir_name, file_name = self.preprocess(int(num), name, file_type)
             display_path = ' | '.join([nom, dir_name, file_name])
@@ -101,6 +102,11 @@ class Downloader:
                 continue
             dir_path = os.path.join(folder, dir_name) if flat else os.path.join(folder, nom, dir_name)
             try:
+                if prev_name == name:
+                    counter += 1
+                    file_name += '-' + str(counter)
+                file_name += file_ext
+                path = os.path.join(dir_path, file_name)
                 is_img = False
                 if not file:
                     self.log_error('No file for %s.' % display_path)
@@ -121,13 +127,19 @@ class Downloader:
                             self.log_info('And the request updated. You should update it!', head=False)
 
                     if not file_exists or (file_exists and not request_up_to_date):
-                        self.log_link("%s -> %s" % (file['link'], display_path))
                         link_dir_path = os.path.join(folder, dir_name) if flat else os.path.join(folder, nom, dir_name)
                         if not os.path.exists(dir_path) \
-                                and not os.path.exists(link_dir_path) \
-                                and action >= self.DOWNLOAD_UPDATED_REQUESTS:
+                                and not os.path.exists(link_dir_path):
                             os.makedirs(link_dir_path)
-
+                        successful_download = False
+                        if action >= self.DOWNLOAD_UPDATED_REQUESTS:
+                            self.log_info(("DL: " + file['link'] + " -> " + display_path))
+                            successful_download = CloudDownloader.get(file['link'], path)
+                        if successful_download:
+                            self.log_info("[CLOUD OK] " + path)
+                        else:
+                            self.log_info("[CLOUD FAIL] " + display_path)
+                            self.log_link("%s -> %s" % (file['link'], display_path))
                     continue
                 else:
                     src_filename = file['filename']
@@ -136,15 +148,8 @@ class Downloader:
                     else:
                         file_ext = '.jpg'
                         is_img = True
-
-                if prev_name == name:
-                    counter += 1
-                    file_name += '-' + str(counter)
-                file_name += file_ext
-                path = os.path.join(dir_path, file_name)
                 file_url = 'http://' + parse.quote('%s.cosplay2.ru/uploads/%d/%d/%s' % (self.event_name, self.event_id,
                                                                                         request_id, src_filename))
-
                 if is_img:
                     file_url += '.jpg'  # Yes, it works this way
                 download_required = True

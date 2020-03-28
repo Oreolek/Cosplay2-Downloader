@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
-
+import json
 import re
 import sqlite3
 
@@ -9,12 +9,10 @@ class Validator(object):
     participant_fields = {'Ваши данные', 'Остальные участники', 'Авторы', 'Представители', 'Члены команды'}
     participant_number_fields = {'Количество участников', 'Количество представителей', 'Количество представителей (кроме помощников)'}
     capital_fields = {'Фамилия', 'Имя', 'Отчество', 'Город'}
-    required_fields = capital_fields | {'Ник'}
+    required_participant_fields = capital_fields | {'Ник', 'Транскрипция ника (для ведущих)'}
     invalid_city_names = {'Орел', 'Щекино', 'Могилев', 'Королев'}
-    required_in_scenic_fields = {'Транскрипция ника (для ведущих)'}
-    scenic_topic_ids = {3926, 3941, 3925, 3942, 3943, 3948, 3949, 3903, 3937, 3940, 3950, 3904, 3938, 3939, 3944}
 
-    def validate_participants(self, request, fields):
+    def validate_participants(self, request, fields, details):
         errors = []
         try:
             expected_participants = filter(
@@ -26,17 +24,24 @@ class Validator(object):
             errors.append('Не указано количество участников')
             expected_participants = None
         participants_data = list(filter(lambda f: f['section_title'] in self.participant_fields, fields))
-        real_participant_ids = set(p['request_section_id'] for p in participants_data)
-        if expected_participants is not None and expected_participants != len(real_participant_ids):
-            errors.append('Несоответствие количества участников: заявлено: %d, добавлено: %d' %
-                          (expected_participants, len(real_participant_ids)))
-        for i, sec_id in enumerate(sorted(list(real_participant_ids))):
+        participant_sections = set(p['request_section_id'] for p in participants_data)
+        if expected_participants is not None and expected_participants != len(participant_sections):
+            errors.append('*Несоответствие количества участников*: заявлено: %d, добавлено: %d' %
+                          (expected_participants, len(participant_sections)))
+        unique_participants = set()
+        for i, sec_id in enumerate(sorted(list(participant_sections))):
             p_data = list(filter(lambda f: f['request_section_id'] == sec_id, fields))
+            participant_basic_info = tuple(f['value'] for f in sorted(filter(lambda f: f['title'] in self.capital_fields, p_data), key=lambda f: f['title']))
+            if participant_basic_info in unique_participants:
+                errors.append('Участник %s упоминается в заявке несколько раз' % (participant_basic_info,))
+            else:
+                unique_participants.add(participant_basic_info)
             ok_fields = set(d['title'] for d in p_data if d['value']
                                                           and (len(d['value']) > 1 or re.match(r'\w', d['value']))
                                                           and not d['value'].lower().startswith("нет"))
-            required_fields = self.required_fields | (
-                self.required_in_scenic_fields if request['topic_id'] in self.scenic_topic_ids else set())
+            all_fields = {f['title'] for f in details['fields']}
+            not_applicable_fields = self.required_participant_fields - all_fields
+            required_fields = self.required_participant_fields - not_applicable_fields
             empty_fields = required_fields - ok_fields
             if empty_fields:
                 errors.append('У участника %d не ' % (i + 1) +
@@ -44,24 +49,43 @@ class Validator(object):
                                                                       else "заполнено поле '%s'" % empty_fields.pop()))
         return errors
 
-    def validate_fields(self, _, fields):
+    def validate_fields(self, request, fields, details):
         errors = []
         for city in set(r['value'] for r in filter(lambda f: f['title'] == 'Город', fields)):
             if city in self.invalid_city_names:
-                errors.append('Неправильное написание города: %s' % city)
+                errors.append('*Неправильное написание города*: %s' % city)
 
         for t, f in set((r['title'], r['value']) for r in filter(lambda f: f['title'] in self.capital_fields, fields)):
             if re.match(r'^[а-я].*', f):
-                errors.append('%s с маленькой буквы: %s' % (t, f))
+                errors.append('%s *с маленькой буквы*: %s' % (t, f))
 
+        required_sections = {s['id'] for s in details['sections'] if '(необязательно' not in s['title'] and s['internal_name'] not in ('members_cosplay', 'helpers')}
+        provided_sections = {rs['topic_section_id'] for rs in details['reqsections']}
+        missing_sections = required_sections - provided_sections
+        section_id_to_title = {f['id']: f['title'] for f in details['sections']}
+        missing_section_titles = {section_id_to_title[missing_section_id] for missing_section_id in missing_sections}
+        if missing_section_titles:
+            errors.append('*Нет ни одной секции*: %s' % str(missing_section_titles))
+
+        required_fields = {f['id'] for f in details['fields'] if '(необязательно' not in f['title'] and f['section_id'] in required_sections - missing_sections}
+        image_sections = {s['id'] for s in details['sections'] if s['internal_name'] in ('image_main', 'files')}
+        char_name_in_image = {f['id'] for f in details['fields'] if f['section_id'] in image_sections and f['type'] == 'text'}
+        required_fields -= char_name_in_image
+        provided_fields = {rf['topic_field_id'] for rf in details['reqvalues']}
+        empty_fields = required_fields - provided_fields
+        field_id_to_title = { f['id']: f['title'] for f in details['fields'] }
+        empty_field_titles = { field_id_to_title[f_id] for f_id in empty_fields }
+        if empty_field_titles:
+            errors.append('*Пустые поля*: %s' % str(empty_field_titles))
         return errors
 
-    def validate_request(self, request, fields):
+    def validate_request(self, request, fields, details_string):
+        details = json.loads(details_string)
         validators = [
             self.validate_participants,
             self.validate_fields
         ]
-        return [error for f in validators for error in f(request, fields)]
+        return [error for f in validators for error in f(request, fields, details)]
 
     def validate(self, db_path):
         report = ''
@@ -76,7 +100,10 @@ class Validator(object):
                 c.execute("SELECT * FROM requests WHERE topic_id = ? AND status != 'disapproved'", [topic['id']])
                 for req in self.fetch_all(c):
                     c.execute("SELECT * FROM [values] WHERE request_id = ?", [req['id']])
-                    errors = self.validate_request(req, self.fetch_all(c))
+                    values = self.fetch_all(c)
+                    c.execute("SELECT json FROM details WHERE request_id = ?", [req['id']])
+                    details = c.fetchone()
+                    errors = self.validate_request(req, values, details[0] if len(details) == 1 else None)
                     if errors:
                         topic_report += "- В заявке [№ %d](https://%s.cosplay2.ru/orgs/requests/request/%s) %s :\n" % \
                               (req['number'], event_name, req['id'], self.iconize_status(req['status']))
@@ -98,3 +125,26 @@ class Validator(object):
                 'review':      '<span title="Рассмотрена">👌</span>',
                 'approved':    '<span title="Принята">✔️</span>',
                 'disapproved': '<span title="Отклонена">❌</span>'}[status]
+
+if __name__ == '__main__':
+    import os
+    from yaml import load, FullLoader
+    root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    config = load(open(os.path.join(root, 'config.yml'), 'r', encoding='utf-8').read(), Loader=FullLoader)
+    db_path = config['db_path']
+    report_path = config['report_path']
+    report_md = "%s\n===\n\n" % os.path.basename(db_path)
+    report_md += Validator().validate(db_path)
+    try:
+        import markdown
+    except ImportError:
+        print('[WARNING] Execute `pip install markdown` to generate true HTML !!!')
+        report_html = '<pre>%s</pre>' % report_md
+    else:
+        print('Converting report to HTML...')
+        report_html = markdown.markdown(report_md)
+    report_html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head>' \
+                '<body>%s</body></html>' % report_html
+    print('Saving report...')
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(report_html)

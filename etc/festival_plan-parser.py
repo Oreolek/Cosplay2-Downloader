@@ -3,15 +3,18 @@
 # Author: Himura Kazuto <himura@tulafest.ru>
 
 import os
+import re
 import sys
 import csv
 from xml.etree import ElementTree
 
-festival_plan_xls = r"%USERPROFILE%\Desktop\festival_plan.xls" if len(sys.argv) < 2 else sys.argv[1]
+festival_plan_xls = "festival_plan.xls" if len(sys.argv) < 2 else sys.argv[1]
 out_dir = os.path.split(festival_plan_xls)[0]
 
+
 xls_contents = open(festival_plan_xls, encoding='utf-8-sig').read()
-xls_contents = xls_contents.split('<body>', 1)[1].replace(' style="""', '').replace('&', '&amp;')  # баги в вёрстке :(
+xls_contents = xls_contents.split('<body>', 1)[1].replace('&', '&amp;')  # баги в вёрстке :(
+xls_contents = re.sub(r'(<.+?=\")(.*?)\"(\">)', r'\1\2\3', xls_contents)
 # open(os.path.join(out_dir, 'xls_contents.html'), 'w', encoding='utf-8').write(xls_contents)  # на случай новых багов
 table = ElementTree.XML(xls_contents)
 
@@ -33,10 +36,10 @@ technical_plan = []
 for row in plan[2:]:  # Отрезаем День и Место
     tag, time, val = row
     if tag == 'b':  # Доп. инфа
-        human_plan += f'\n{time} {val}:\n'
-        technical_plan.append((val, '', '', '', ''))
+        human_plan += f'\n{time}\t{val}\n'
+        technical_plan.append((val, time, '', '', ''))
     elif tag is None:  # Номер
-        human_plan += f"{time} {val.replace(',', '.', 1)}\n"
+        human_plan += f"{time}\t\t{val.replace(',', '.', 1)}\n"
         code, title = val.split(', ', 1)
         code, num = code.split(' ', 1)
         technical_plan.append(('', time, code, num, title))
